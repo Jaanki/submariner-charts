@@ -3,3 +3,5 @@
 .shflags
 *.tgz
 Makefile.dapper
+Dockerfile.*
+helm_repo

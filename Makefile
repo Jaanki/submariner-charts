@@ -1,48 +1,60 @@
 BASE_BRANCH ?= devel
 export BASE_BRANCH
+export HELM_REPO_LOCATION=./helm_repo
 
 ifneq (,$(DAPPER_HOST_ARCH))
 
 # Running in Dapper
 
-PRELOAD_IMAGES := submariner-gateway submariner-operator submariner-route-agent lighthouse-agent lighthouse-coredns
-
 include $(SHIPYARD_DIR)/Makefile.inc
 
-CLUSTER_SETTINGS_FLAG = --cluster_settings $(DAPPER_SOURCE)/cluster_settings
 ifneq (,$(filter ovn,$(_using)))
-CLUSTER_SETTINGS_FLAG = --cluster_settings $(DAPPER_SOURCE)/cluster_settings.ovn
+export SETTINGS = $(DAPPER_SOURCE)/.shipyard.e2e.ovn.yml
 else
-CLUSTER_SETTINGS_FLAG = --cluster_settings $(DAPPER_SOURCE)/cluster_settings
+export SETTINGS = $(DAPPER_SOURCE)/.shipyard.e2e.yml
 endif
 
-override CLUSTERS_ARGS += $(CLUSTER_SETTINGS_FLAG)
-override DEPLOY_ARGS += $(CLUSTER_SETTINGS_FLAG) --deploytool helm
-export DEPLOY_ARGS
+export DEPLOYTOOL = helm
 GH_URL=https://submariner-io.github.io/submariner-charts/charts
 CHARTS_DIR=charts
-CHARTS_VERSION=0.7.0
+CHARTS_VERSION=0.14.0
+HELM_DOCS_VERSION=0.15.0
 REPO_URL=$(shell git config remote.origin.url)
-
-# Process extra flags from the `using=a,b,c` optional flag
-
-ifneq (,$(filter lighthouse,$(_using)))
-override DEPLOY_ARGS += --service_discovery
-endif
-
-ifneq (,$(filter globalnet,$(_using)))
-override DEPLOY_ARGS += --globalnet
-endif
+SUBCTL_VERSION=$(CHARTS_VERSION)
+export SUBCTL_VERSION
 
 # Targets to make
 
-e2e: E2E_ARGS=cluster1 cluster2
+CHART_PACKAGES := submariner-k8s-broker-$(CHARTS_VERSION).tgz submariner-operator-$(CHARTS_VERSION).tgz
+
+local-helm-repo: $(CHART_PACKAGES)
+	mkdir -p $(HELM_REPO_LOCATION)
+	for archive in $^; do \
+	  tar xzf $$archive -C $(HELM_REPO_LOCATION); \
+	done
+
+e2e: local-helm-repo
+	$(SCRIPTS_DIR)/e2e.sh
 
 %.tgz:
 	helm dep update $(subst -$(CHARTS_VERSION),,$(basename $(@F)))
-	helm package --version $(CHARTS_VERSION) $(subst -$(CHARTS_VERSION),,$(basename $(@F)))
+	helm package --version $(CHARTS_VERSION) --app-version $(CHARTS_VERSION) $(subst -$(CHARTS_VERSION),,$(basename $(@F)))
 
-release: submariner-k8s-broker-$(CHARTS_VERSION).tgz submariner-operator-$(CHARTS_VERSION).tgz
+helm-docs:
+	# Avoid polluting repo with helm-docs' README/LICENSE or other files in the release archive
+	cd /tmp && \
+	curl -sL https://github.com/norwoodj/helm-docs/releases/download/v$(HELM_DOCS_VERSION)/helm-docs_$(HELM_DOCS_VERSION)_Linux_x86_64.tar.gz | tar zx && \
+	cd -
+	/tmp/helm-docs
+	if [ ! -z $(git status --porcelain) ]; then \
+		echo "Helm docs not up-to-date:"; \
+		git status --porcelain; \
+		git diff; \
+		echo "Run make helm-docs locally to generate updated docs, commit the updates."; \
+		exit 1; \
+	fi
+
+release: $(CHART_PACKAGES)
 	git checkout gh-pages
 	mv *.tgz $(CHARTS_DIR)
 	if [ -f $(CHARTS_DIR)/index.yaml ]; then \
@@ -51,7 +63,7 @@ release: submariner-k8s-broker-$(CHARTS_VERSION).tgz submariner-operator-$(CHART
 	  helm repo index $(CHARTS_DIR) --url $(GH_URL); \
 	fi
 
-.PHONY: release
+.PHONY: release helm-docs
 
 else
 

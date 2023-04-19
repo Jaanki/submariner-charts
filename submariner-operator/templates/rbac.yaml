@@ -162,6 +162,17 @@ rules:
     - patch
     - update
     - watch
+- apiGroups:
+    - coordination.k8s.io
+  resources:
+    - leases
+  verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -439,6 +450,29 @@ rules:
     verbs:
       - get
       - list
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - servicemonitors
+    verbs:
+      - get
+      - create
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -457,6 +491,29 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ template "submariner.fullname" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: submariner-metrics-reader
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: read-submariner-metrics
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-k8s
+    namespace: openshift-monitoring
+roleRef:
+  kind: Role
+  name: submariner-metrics-reader
+  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -640,14 +697,25 @@ rules:
       - ""
     resources:
       - pods
-      - services
       - namespaces
       - nodes
+      - endpoints
     verbs:
       - get
       - list
       - watch
       - update
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - delete
   - apiGroups:
       - submariner.io
     resources:
@@ -688,6 +756,15 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+      - network.openshift.io
+    resources:
+      - service/externalips
+    verbs:
+      - create
+      - get
+      - list
+      - delete
 ---
 {{- end -}}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -734,6 +811,7 @@ rules:
       - discovery.k8s.io
     resources:
       - endpointslices
+      - endpointslices/restricted
     verbs:
       - create
       - get
@@ -810,20 +888,10 @@ rules:
       - delete
       - deletecollection
   - apiGroups:
-      - lighthouse.submariner.io
-    resources:
-      - "*"
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - delete
-  - apiGroups:
       - submariner.io
     resources:
       - "gateways"
+      - "submariners"
     verbs:
       - get
       - list

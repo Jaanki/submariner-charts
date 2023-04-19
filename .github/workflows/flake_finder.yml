@@ -5,6 +5,8 @@ on:
   schedule:
     - cron: "0 0 * * *"
 
+permissions: {}
+
 jobs:
   e2e:
     name: E2E
@@ -19,7 +21,7 @@ jobs:
         lighthouse: ['', 'lighthouse']
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3
 
       - name: Run E2E deployment and tests
         uses: submariner-io/shipyard/gh-actions/e2e@devel
